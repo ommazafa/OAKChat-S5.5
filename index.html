@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OAKChat</title><meta name="theme-color" content="#0b0c10">
+<style>
+:root{--bg:#0b0c10;--s1:#14161d;--s2:#1c1f29;--tx:#ece8df;--mu:#8b8f9c;--gd:#e6c27a;--ok:#7fd6a8;--bad:#ef7b7b;--r:18px}
+*{box-sizing:border-box;margin:0}html,body{height:100%}
+body{background:radial-gradient(900px 500px at 50% -10%,#1d1a2b,var(--bg));color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+h1,h2,.freq{font-family:ui-serif,Georgia,"Times New Roman",serif;font-weight:500;letter-spacing:.01em}
+#app{max-width:560px;height:100%;margin:auto;display:flex;flex-direction:column;padding:0 16px}
+.scr{display:none;flex:1;min-height:0;flex-direction:column;gap:14px;padding:18px 0}.scr.on{display:flex}
+input,button{font:inherit;color:inherit}
+input{background:var(--s1);border:1px solid #2a2e3b;border-radius:14px;padding:13px 15px;width:100%;outline:none}
+input:focus-visible,button:focus-visible{outline:2px solid var(--gd);outline-offset:2px}
+button{border:0;border-radius:14px;padding:13px 18px;background:var(--s2);cursor:pointer}
+button.pri{background:var(--gd);color:#1a1405;font-weight:600}button.dng{color:var(--bad)}button:disabled{opacity:.45}
+.card{background:var(--s1);border:1px solid #23263233;border-radius:var(--r);padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+.mu{color:var(--mu);font-size:.88rem}.row{display:flex;gap:8px}.grow{flex:1;min-width:0}
+.freq{color:var(--gd);font-size:1.25rem;white-space:nowrap}
+#gate{justify-content:center;text-align:center;gap:16px}#gate h1{font-size:3rem}
+canvas{width:100%;height:56px;border-radius:14px;background:var(--s1);display:block}
+#top{display:flex;align-items:center;gap:10px;padding-top:14px}#top .grow{font-family:ui-serif,Georgia,serif;font-size:1.3rem}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--ok);transition:.2s}#dot.tx{background:var(--gd);box-shadow:0 0 0 6px #e6c27a33}
+#list,#msgs,#pend{display:flex;flex-direction:column;gap:10px;overflow:auto}#list{flex:1}#msgs{flex:1;min-height:0}
+.m{max-width:84%;padding:10px 13px;border-radius:16px;background:var(--s2);align-self:flex-start;overflow-wrap:anywhere}
+.m.me{align-self:flex-end;background:#3a3118}.m b{display:block;font-size:.78rem;color:var(--gd);font-weight:500}.m i{font-size:.72rem;color:var(--mu);font-style:normal}
+.sys{align-self:center;color:var(--mu);font-size:.82rem;text-align:center}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,30px);background:#000d;border:1px solid #333;padding:10px 16px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;text-align:center}#toast.on{opacity:1;transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body><div id="app">
+
+<section class="scr on" id="gate"><h1>OAKChat</h1>
+<p class="mu">Chat with people in the same room using sound you can't hear. No Wi-Fi, no Bluetooth.</p>
+<input id="uname" maxlength="12" placeholder="Your name" autocomplete="off">
+<button class="pri" id="go">Allow mic &amp; sound, then enter</button>
+<p class="mu">Turn your device volume up to maximum. Keep this tab open and the screen on.</p></section>
+
+<section class="scr" id="home"><div id="top"><div class="grow" id="me"></div><span id="dot"></span><button id="ren">Rename</button></div>
+<canvas id="cv" width="560" height="56"></canvas>
+<h2>Rooms nearby</h2><div id="list"></div>
+<div class="row"><input id="jf" inputmode="decimal" placeholder="Frequency, e.g. 17.350"><button id="jb">Join</button></div>
+<div class="row"><input id="rt" maxlength="20" placeholder="Name your room"><button class="pri" id="cr">Create room</button></div>
+<button id="clr" class="mu">Forget my name on this device</button></section>
+
+<section class="scr" id="room"><div id="top2" style="display:flex;gap:10px;align-items:center"><div class="grow"><div id="rtitle" style="font-family:ui-serif,Georgia,serif;font-size:1.3rem"></div><div class="freq" id="rfreq"></div></div><span id="dot2" class="mu"></span><button id="mem">Members</button><button id="lv" class="dng">Leave</button></div>
+<div id="pend"></div><div id="msgs" aria-live="polite"></div>
+<div class="mu" id="cnt">0 / 60 bytes</div>
+<div class="row"><input id="txt" placeholder="Message" autocomplete="off"><button class="pri" id="snd">Send</button></div></section>
+</div><div id="toast" role="status"></div>
+<script src="ggwave.js"></script>
+<script>
+"use strict";
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>String(s).replace(/[|\u0000-\u001f]/g,"").trim();
+const hex4=()=>Math.floor(Math.random()*65536).toString(16).padStart(4,"0");
+const fmt=id=>(15+id/1000).toFixed(3)+" kHz",bytes=s=>new TextEncoder().encode(s).length,MAXB=60;
+let gg,inst,ctx,an,rxMute=false,me={id:hex4(),name:""},room=null,joining=null,txActive=false;
+const rooms=new Map(),pend=new Map(),members=new Map(),q=[];
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2600)}
+function show(id){document.querySelectorAll(".scr").forEach(s=>s.classList.toggle("on",s.id===id));if(id==="home")drawList()}
+
+/* ---------- audio ---------- */
+async function boot(){
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});await ctx.resume();
+  gg=await ggwave_factory({print(){},printErr(){}});
+  const p=gg.getDefaultParameters();p.sampleRateInp=ctx.sampleRate;p.sampleRateOut=ctx.sampleRate;p.soundMarkerThreshold=4;inst=gg.init(p);
+  const src=ctx.createMediaStreamSource(stream);an=ctx.createAnalyser();an.fftSize=2048;an.smoothingTimeConstant=.6;src.connect(an);
+  const pr=ctx.createScriptProcessor(1024,1,1),z=ctx.createGain();z.gain.value=0;src.connect(pr);pr.connect(z);z.connect(ctx.destination);
+  pr.onaudioprocess=e=>{if(rxMute)return;const d=e.inputBuffer.getChannelData(0);
+    const r=gg.decode(inst,new Int8Array(new Float32Array(d).buffer));if(r&&r.length>0)handle(new TextDecoder().decode(r))};
+  try{const wl=()=>navigator.wakeLock&&navigator.wakeLock.request("screen").catch(()=>{});wl();document.addEventListener("visibilitychange",()=>{if(!document.hidden)wl()})}catch(e){}
+  draw();
+}
+function busy(){const a=new Float32Array(an.frequencyBinCount);an.getFloatFrequencyData(a);const hz=ctx.sampleRate/an.fftSize;let m=-200;
+  for(let i=Math.floor(15000/hz);i<=Math.ceil(19300/hz);i++)m=Math.max(m,a[i]);return m>-65}
+let pumping=false;
+function send(t,rid,body=""){q.push(t+rid+me.id+body);pump()}
+async function pump(){if(pumping)return;pumping=true;
+  while(q.length){let n=0;while(busy()&&n++<24)await sleep(250+Math.random()*700);
+    const pkt=q.shift(),w=gg.encode(inst,pkt,gg.ProtocolId.GGWAVE_PROTOCOL_ULTRASOUND_FAST,70);
+    const f=new Float32Array(w.buffer.slice(w.byteOffset,w.byteOffset+w.byteLength));
+    const b=ctx.createBuffer(1,f.length,ctx.sampleRate);b.copyToChannel(f,0);
+    const s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);
+    rxMute=true;$("#dot").classList.add("tx");await new Promise(r=>{s.onended=r;s.start()});
+    await sleep(400);rxMute=false;$("#dot").classList.remove("tx");await sleep(150)}
+  pumping=false}
+function draw(){const c=$("#cv"),g=c.getContext("2d"),a=new Uint8Array(an.frequencyBinCount),hz=ctx.sampleRate/an.fftSize;
+  (function f(){requestAnimationFrame(f);if(!c.offsetParent)return;an.getByteFrequencyData(a);g.clearRect(0,0,c.width,c.height);
+    const lo=Math.floor(14000/hz),hi=Math.ceil(20000/hz),w=c.width/(hi-lo);g.fillStyle="#e6c27a";
+    for(let i=lo;i<hi;i++){const h=a[i]/255*c.height;g.globalAlpha=.35+a[i]/400;g.fillRect((i-lo)*w,c.height-h,Math.max(1,w-1),h)}})()}
+
+/* ---------- protocol ---------- */
+function handle(s){const m=/^([BJADMSLK])(\d{4})([0-9a-f]{4})([\s\S]*)$/.exec(s);if(!m)return;
+  const [,t,r,from,body]=m;if(from===me.id)return;
+  if(t==="B"){const [title,name]=body.split("|");rooms.set(r,{title:title||"Room",owner:name||"?",admin:from,seen:Date.now()});if($("#home").classList.contains("on"))drawList();return}
+  if(t==="J"&&room&&room.admin&&r===room.id){const name=body.split("|")[0]||"Guest";
+    if(members.has(from)){send("A",room.id,from);return}
+    if(!pend.has(from)){pend.set(from,name);drawPend()}return}
+  if(t==="A"&&joining&&joining.id===r&&body===me.id){enter(r,joining.title,false,from);joining=null;return}
+  if(t==="D"&&joining&&joining.id===r&&body===me.id){joining=null;toast("The admin declined your request");drawList();return}
+  if(!room||r!==room.id)return;
+  if(t==="M"){if(room.admin&&!members.has(from))return;const i=body.indexOf("|");addMsg(body.slice(0,i)||"?",body.slice(i+1),false)}
+  else if(t==="S"&&from===room.adminId)addSys(body);
+  else if(t==="L"){if(from===room.adminId){toast("The admin closed the room");leave(true)}else if(room.admin&&members.has(from)){const nm=members.get(from);addSys(nm+" left");members.delete(from);send("S",room.id,nm+" left")}}
+  else if(t==="K"&&from===room.adminId&&body===me.id){toast("You were removed from the room");leave(true)}}
+
+/* ---------- rooms ---------- */
+let beacon=null,retry=null;
+function createRoom(){const title=esc($("#rt").value)||me.name+"'s room",id=String(Math.floor(Math.random()*4000)).padStart(4,"0");
+  members.clear();pend.clear();enter(id,title,true,me.id);
+  const b=()=>send("B",id,title+"|"+me.name);b();beacon=setInterval(b,14000)}
+function enter(id,title,admin,adminId){room={id,title,admin,adminId};clearInterval(retry);
+  $("#rtitle").textContent=title;$("#rfreq").textContent=fmt(+id);$("#mem").style.display=admin?"":"none";$("#msgs").textContent="";$("#pend").textContent="";
+  addSys(admin?"Room open. People nearby can find it at "+fmt(+id):"You joined "+title);show("room")}
+function leave(silent){if(!room)return;if(room.admin){clearInterval(beacon);if(!silent)send("L",room.id)}else if(!silent)send("L",room.id,me.name);
+  room=null;members.clear();pend.clear();show("home")}
+function requestJoin(id,title){if(joining)return toast("Already waiting for a reply");joining={id,title};let n=0;
+  const go=()=>{if(!joining)return clearInterval(retry);if(n++>=4){joining=null;clearInterval(retry);toast("No reply. Move closer and try again");return drawList()}send("J",id,me.name)};
+  go();retry=setInterval(go,9000);toast("Request sent. Waiting for the admin…");drawList()}
+function drawList(){const l=$("#list");l.textContent="";const now=Date.now();
+  for(const [id,r] of rooms)if(now-r.seen>45000)rooms.delete(id);
+  if(!rooms.size){const e=document.createElement("p");e.className="mu";e.textContent="Listening… rooms announce themselves every few seconds. You can also type a frequency below.";l.append(e)}
+  for(const [id,r] of rooms){const c=document.createElement("div");c.className="card";
+    const a=document.createElement("div");a.className="grow";const t=document.createElement("div");t.textContent=r.title;const o=document.createElement("div");o.className="mu";o.textContent="by "+r.owner;a.append(t,o);
+    const f=document.createElement("div");f.className="freq";f.textContent=fmt(+id);const b=document.createElement("button");b.className="pri";b.textContent=joining&&joining.id===id?"Waiting…":"Join";b.disabled=!!joining;b.onclick=()=>requestJoin(id,r.title);c.append(a,f,b);l.append(c)}}
+setInterval(()=>{if($("#home").classList.contains("on"))drawList()},5000);
+function drawPend(){const p=$("#pend");p.textContent="";for(const [id,name] of pend){const c=document.createElement("div");c.className="card";
+  const a=document.createElement("div");a.className="grow";a.textContent=name+" wants to join";const y=document.createElement("button");y.className="pri";y.textContent="Accept";const n=document.createElement("button");n.textContent="Decline";
+  y.onclick=()=>{pend.delete(id);members.set(id,name);send("A",room.id,id);send("S",room.id,name+" joined");addSys(name+" joined");drawPend()};
+  n.onclick=()=>{pend.delete(id);send("D",room.id,id);drawPend()};c.append(a,y,n);p.append(c)}}
+function showMembers(){const w=$("#pend");if(w.dataset.m==="1"){w.dataset.m="";return drawPend()}w.dataset.m="1";w.textContent="";
+  if(!members.size){const e=document.createElement("p");e.className="mu";e.textContent="No members yet.";w.append(e)}
+  for(const [id,name] of members){const c=document.createElement("div");c.className="card";const a=document.createElement("div");a.className="grow";a.textContent=name;
+    const k=document.createElement("button");k.className="dng";k.textContent="Kick";k.onclick=()=>{members.delete(id);send("K",room.id,id);send("S",room.id,name+" was removed");addSys(name+" was removed");showMembers();showMembers()};c.append(a,k);w.append(c)}}
+function addMsg(name,text,mine){const d=document.createElement("div");d.className="m"+(mine?" me":"");
+  if(!mine){const b=document.createElement("b");b.textContent=name;d.append(b)}d.append(document.createTextNode(text));
+  const i=document.createElement("i");i.textContent=" "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+(mine?" · sent":"");d.append(i);
+  const m=$("#msgs");m.append(d);m.scrollTop=m.scrollHeight}
+function addSys(t){const d=document.createElement("div");d.className="sys";d.textContent=t;const m=$("#msgs");m.append(d);m.scrollTop=m.scrollHeight}
+
+/* ---------- wiring ---------- */
+function setName(n){me.name=n;localStorage.setItem("oak.name",n);$("#me").textContent=n}
+$("#uname").value=localStorage.getItem("oak.name")||"";
+$("#go").onclick=async()=>{const n=esc($("#uname").value);if(!n)return toast("Enter a name first");
+  $("#go").disabled=true;$("#go").textContent="Starting…";
+  try{await boot();setName(n);show("home")}catch(e){$("#go").disabled=false;$("#go").textContent="Allow mic & sound, then enter";
+    toast(e&&e.name==="NotAllowedError"?"Microphone blocked. Allow it in your browser settings":"Could not start audio: "+(e&&e.message||e))}};
+$("#ren").onclick=()=>{const n=esc(prompt("New name",me.name)||"");if(n)setName(n.slice(0,12))};
+$("#clr").onclick=()=>{localStorage.removeItem("oak.name");toast("Name forgotten. Nothing else is stored")};
+$("#cr").onclick=createRoom;
+$("#jb").onclick=()=>{const v=parseFloat($("#jf").value.replace(/khz/i,"").replace(",","."));const id=Math.round((v-15)*1000);
+  if(!(id>=0&&id<4000))return toast("Frequencies run from 15.000 to 18.999 kHz");const k=String(id).padStart(4,"0"),r=rooms.get(k);requestJoin(k,r?r.title:"Room "+fmt(id))};
+$("#lv").onclick=()=>{if(room&&confirm(room.admin?"Close this room for everyone?":"Leave this room?"))leave(false)};
+$("#mem").onclick=showMembers;
+const txt=$("#txt");txt.oninput=()=>{const n=bytes(txt.value);$("#cnt").textContent=n+" / "+MAXB+" bytes"+(n>MAXB?" — too long":"");$("#cnt").style.color=n>MAXB?"var(--bad)":""};
+function sendMsg(){const t=txt.value.trim();if(!t||!room)return;if(bytes(t)>MAXB)return toast("Too long. Emoji count as about 4 bytes each");
+  send("M",room.id,me.name+"|"+t);addMsg(me.name,t,true);txt.value="";txt.oninput()}
+$("#snd").onclick=sendMsg;txt.onkeydown=e=>{if(e.key==="Enter")sendMsg()};
+if(!window.isSecureContext||!navigator.mediaDevices)toast("Open this page over HTTPS to use the microphone");
+</script></body></html>
