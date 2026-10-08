@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OAKChat</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%8C%B0%3C/text%3E%3C/svg%3E"><meta name="theme-color" content="#0b0c10">
+<style>
+:root{--bg:#0b0c10;--s1:#14161d;--s2:#1c1f29;--tx:#ece8df;--mu:#8b8f9c;--gd:#e6c27a;--ok:#7fd6a8;--bad:#ef7b7b}
+*{box-sizing:border-box;margin:0}html,body{height:100%;overflow:hidden}
+body{background:radial-gradient(900px 500px at 50% -10%,#1d1a2b,var(--bg));color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+h1,h2,.freq,.big b{font-family:ui-serif,Georgia,"Times New Roman",serif;font-weight:500}
+#app{max-width:560px;height:100vh;height:100dvh;margin:auto;display:flex;flex-direction:column;padding:max(10px,env(safe-area-inset-top)) 16px max(10px,env(safe-area-inset-bottom))}
+#app>*{flex:none}
+canvas{width:100%;height:92px;border-radius:18px;background:var(--s1);display:block}
+#bar{display:none;align-items:center;gap:10px;padding:10px 2px 0}body:not([data-s=gate]) #bar{display:flex}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}#dot.tx{background:var(--gd)}
+#st{flex:1;min-width:0;font-size:.85rem;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nm{width:8.5em;padding:6px 10px;border-radius:10px;font-size:16px}  /* 16px stops iOS zooming the page on focus */
+.scr{display:none;flex:1 1 auto!important;min-height:0;flex-direction:column;gap:12px;padding:14px 0 0}.scr.on{display:flex}
+.scr>*{flex:none}.scr .fill{flex:1 1 auto;min-height:0;overflow:auto}
+input,button{font:inherit;color:inherit}
+input{background:var(--s1);border:1px solid #2a2e3b;border-radius:14px;padding:13px 15px;width:100%;outline:none}
+input:focus-visible,button:focus-visible{outline:2px solid var(--gd);outline-offset:2px}
+button,input{touch-action:manipulation}button{border:0;border-radius:14px;padding:13px 18px;background:var(--s2);cursor:pointer}
+button.pri{background:var(--gd);color:#1a1405;font-weight:600}button.dng{color:var(--bad)}button:disabled{opacity:.45}button.ghost{background:none;color:var(--mu);padding:8px 4px}
+.card{background:var(--s1);border:1px solid #262a37;border-radius:18px;padding:13px 15px;display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.mu{color:var(--mu);font-size:.88rem}.row{display:flex;gap:8px}.grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.freq{color:var(--gd);font-size:1.2rem;white-space:nowrap}
+#gate{justify-content:center;text-align:center;gap:14px}#gate h1{font-size:3rem}
+.big{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:20px;border-radius:20px;text-align:left}.big b{font-size:1.4rem}.big span{font-size:.88rem;opacity:.75}
+#msgs{display:flex;flex-direction:column;gap:10px}#pend{display:none;flex-direction:column;max-height:34vh;overflow:auto}
+.m{max-width:84%;padding:10px 13px;border-radius:16px;background:var(--s2);align-self:flex-start;overflow-wrap:anywhere;flex:none}
+.m.me{align-self:flex-end;background:#3a3118}.m span{display:block}.m b{display:block;font-size:.78rem;color:var(--gd);font-weight:500}.m i{font-size:.72rem;color:var(--mu);font-style:normal}
+.sys{align-self:center;color:var(--mu);font-size:.82rem;text-align:center;flex:none}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,30px);background:#000e;border:1px solid #444;padding:11px 16px;border-radius:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;text-align:center;z-index:9}#toast.on{opacity:1;transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body data-s="gate"><div id="app">
+<canvas id="wave" aria-hidden="true"></canvas>
+<div id="bar"><span id="dot"></span><span id="st">Starting…</span><input id="nm" maxlength="12" aria-label="Your name"></div>
+
+<section class="scr on" id="gate"><h1>OAKChat</h1>
+<p class="mu">Chat with people in the same room using sound you can't hear. No Wi-Fi, no Bluetooth.</p>
+<input id="uname" maxlength="12" placeholder="Choose a name" autocomplete="off" dir="auto" aria-label="Your name">
+<button class="pri" id="go">Continue</button>
+<p class="mu">Next you'll be asked for the microphone. Set your volume to maximum, disconnect Bluetooth headphones, and keep this tab open.</p></section>
+
+<section class="scr" id="menu"><button class="big pri" id="mj"><b>Join a room</b><span>Find rooms near you or enter a frequency</span></button>
+<button class="big" id="mc"><b>Create a new room</b><span>You become the admin and get your own frequency</span></button>
+<button class="ghost" id="tst">Test my speaker and mic</button><button class="ghost" id="clr">Forget my name on this device</button></section>
+
+<section class="scr" id="join"><div class="row"><button class="ghost" data-back>← Back</button></div><h2>Rooms nearby</h2>
+<div id="wait"></div><div id="list" class="fill"></div>
+<div class="row"><input id="jf" inputmode="decimal" placeholder="Or enter a frequency, e.g. 17.350" aria-label="Room frequency"><button id="jb" class="pri">Join</button></div></section>
+
+<section class="scr" id="create"><div class="row"><button class="ghost" data-back>← Back</button></div><h2>Create a new room</h2>
+<input id="rt" maxlength="20" placeholder="Room title (optional)" autocomplete="off" dir="auto" aria-label="Room title"><button class="pri" id="cr">Create room</button>
+<p class="mu">Your room gets its own frequency. People nearby will see it and can ask to join.</p></section>
+
+<section class="scr" id="room"><div class="row" style="align-items:center"><div class="grow"><div id="rtitle" style="font-family:ui-serif,Georgia,serif;font-size:1.3rem"></div><div class="freq" id="rfreq"></div></div><button id="mem">Members</button><button id="lv" class="dng">Leave</button></div>
+<div id="pend"></div><div id="msgs" class="fill" aria-live="polite"></div>
+<div class="mu" id="cnt">0 / 60 bytes</div>
+<div class="row"><input id="txt" placeholder="Message" autocomplete="off" dir="auto" aria-label="Message"><button class="pri" id="snd">Send</button></div></section>
+</div><div id="toast" role="status"></div>
+<script src="ggwave.js"></script>
+<script>
+"use strict";
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms)),TEST=window.__OAK_TEST__;
+const clean=(s,n)=>Array.from(String(s).replace(/[|\u0000-\u001f\u007f]/g,"").trim()).slice(0,n).join("");
+const hex4=()=>Math.floor(Math.random()*65536).toString(16).padStart(4,"0");
+const fmt=id=>(15+id/1000).toFixed(3)+" kHz",bytes=s=>new TextEncoder().encode(s).length;
+const GR=48000,MAXB=60,VOL=80,KIND={B:"a room beacon",J:"a join request",A:"an approval",D:"a decline",M:"a message",S:"a notice",L:"a leave",K:"a removal",T:"a test"};
+let gg,txI,rxI,ctx,an,tx=false,lastRx=-1e9,lastKind="",me={id:hex4(),name:""},room=null,joining=null,beacon=null,retry=null,pumping=false,testing=0,showMem=false;
+const keep={},rooms=new Map(),pend=new Map(),members=new Map(),banned=new Set(),declined=new Set(),q=[];let lastSig="";
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),4200)}
+function show(id){document.querySelectorAll(".scr").forEach(s=>s.classList.toggle("on",s.id===id));document.body.dataset.s=id;if(id==="join")drawList(true)}
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const btn=(x,c,f)=>{const b=el("button",c,x);b.onclick=f;return b};
+const card=(label,btns)=>{const c=el("div","card"),g=el("div","grow",label);c.append(g,...btns);return c};
+
+/* ---------- audio ---------- */
+async function boot(){
+  if(TEST)return;
+  if(typeof ggwave_factory==="undefined")throw new Error("ggwave.js did not load. Keep it in the same folder as index.html.");
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error("The microphone needs HTTPS. Open the page from its https:// address.");
+  const AC=window.AudioContext||window.webkitAudioContext;
+  const mkCtx=r=>{try{return r?new AC({sampleRate:r}):new AC()}catch(e){return new AC()}};
+  ctx=mkCtx(GR);const early=ctx.resume();                      // created inside the tap, so iOS lets it play
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    await early;await ctx.resume();
+    let src;try{src=ctx.createMediaStreamSource(stream)}catch(e){try{ctx.close()}catch(_){}ctx=mkCtx(0);await ctx.resume();src=ctx.createMediaStreamSource(stream)}  // Firefox can refuse a mismatched rate
+    an=ctx.createAnalyser();an.fftSize=2048;an.smoothingTimeConstant=.6;src.connect(an);
+    const pr=ctx.createScriptProcessor(1024,1,1),z=ctx.createGain();z.gain.value=0;src.connect(pr);pr.connect(z);z.connect(ctx.destination);
+    Object.assign(keep,{stream,src,pr,z});                     // keep references: Chrome garbage-collects unreferenced audio nodes
+    gg=gg||await ggwave_factory({print(){},printErr(){}});
+    const mk=r=>{const p=gg.getDefaultParameters();p.sampleRateInp=r;p.sampleRateOut=r;p.sampleRate=GR;p.soundMarkerThreshold=4;return gg.init(p)};
+    txI=mk(ctx.sampleRate);rxI=mk(GR);                         // created last so a failed start never leaks instances (max 4)
+    const rs=resampler(ctx.sampleRate);pr.onaudioprocess=e=>rs(e.inputBuffer.getChannelData(0));
+  }catch(e){if(stream)stream.getTracks().forEach(t=>t.stop());try{ctx.close()}catch(_){}ctx=null;an=null;throw e}
+  ctx.onstatechange=()=>{if(ctx.state!=="running")ctx.resume().catch(()=>{})};
+  document.addEventListener("pointerdown",()=>{if(ctx&&ctx.state!=="running")ctx.resume().catch(()=>{})});
+  try{const wl=()=>navigator.wakeLock&&navigator.wakeLock.request("screen").catch(()=>{});wl();document.addEventListener("visibilitychange",()=>{if(!document.hidden)wl()})}catch(e){}
+}
+function resampler(inRate){                                    // ggwave only decodes reliably at 48 kHz, so convert and feed 1024-sample frames
+  const step=inRate/GR;let carry=new Float32Array(0),pos=0,out=[];
+  return d=>{
+    if(inRate===GR){feed(Float32Array.from(d));return}
+    const s=new Float32Array(carry.length+d.length);s.set(carry);s.set(d,carry.length);
+    while(pos+1<s.length){const k=Math.floor(pos),f=pos-k;out.push(s[k]*(1-f)+s[k+1]*f);pos+=step}
+    const k=Math.floor(pos);carry=s.slice(k);pos-=k;
+    while(out.length>=1024)feed(Float32Array.from(out.splice(0,1024)));
+  };
+}
+function feed(f){const r=gg.decode(rxI,new Int8Array(f.buffer));if(r&&r.length>0)handle(new TextDecoder().decode(r))}
+function busy(){if(!an)return false;const a=new Float32Array(an.frequencyBinCount);an.getFloatFrequencyData(a);const hz=ctx.sampleRate/an.fftSize;let m=-200;
+  for(let i=Math.floor(15000/hz);i<=Math.ceil(19300/hz);i++)m=Math.max(m,a[i]);return m>-60}
+function send(t,rid,body="",done,fail){q.push({p:t+rid+me.id+body,done,fail});pump()}
+async function pump(){if(pumping)return;pumping=true;
+  try{while(q.length){let n=0;while(busy()&&n++<6)await sleep(300+Math.random()*600);
+    const it=q.shift();try{await play(it.p);it.done&&it.done()}catch(e){it.fail&&it.fail();toast("Could not transmit: "+(e&&e.message||e))}
+    await sleep(250)}}finally{pumping=false;tx=false}}
+async function play(p){tx=true;try{
+  if(TEST){await TEST.tx(p);return}
+  if(ctx.state!=="running"){await ctx.resume().catch(()=>{});if(ctx.state!=="running")throw new Error("audio is paused. Tap the screen and try again")}
+  const w=gg.encode(txI,p,gg.ProtocolId.GGWAVE_PROTOCOL_ULTRASOUND_FAST,VOL);
+  const f=new Float32Array(w.buffer.slice(w.byteOffset,w.byteOffset+w.byteLength));
+  const b=ctx.createBuffer(1,f.length,ctx.sampleRate);b.copyToChannel(f,0);
+  const s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);
+  await Promise.race([new Promise(r=>{s.onended=r;s.start()}),sleep(b.duration*1000+2000)]);try{s.stop()}catch(e){}}finally{tx=false}}  // timeout: a suspended context must not freeze the queue
+
+/* ---------- waves + status ---------- */
+function waves(){const c=$("#wave"),g=c.getContext&&c.getContext("2d");if(!g)return;
+  const css=getComputedStyle(document.documentElement),gold=css.getPropertyValue("--gd").trim(),ok=css.getPropertyValue("--ok").trim(),mu=css.getPropertyValue("--mu").trim();
+  const rm=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches),rings=[];let last=0,dat=null;
+  (function f(t){requestAnimationFrame(f);const dpr=window.devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;if(!w||!h)return;
+    if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr)}
+    g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+    const hearing=performance.now()-lastRx<1800,col=tx?gold:hearing?ok:mu;
+    if(an){dat=dat||new Uint8Array(an.frequencyBinCount);an.getByteFrequencyData(dat);const hz=ctx.sampleRate/an.fftSize,lo=Math.floor(14000/hz),hi=Math.ceil(20000/hz),bw=w/(hi-lo);g.fillStyle=col;
+      for(let i=lo;i<hi;i++){g.globalAlpha=.1+dat[i]/600;const bh=dat[i]/255*h*.9;g.fillRect((i-lo)*bw,h-bh,Math.max(1,bw-1),bh)}}
+    const amp=(tx?h*.36:hearing?h*.24:h*.07)*(rm?.5:1);g.strokeStyle=col;
+    for(let k=0;k<3;k++){g.beginPath();g.lineWidth=2.2-k*.6;g.globalAlpha=.95-k*.28;
+      for(let x=0;x<=w;x+=3){const y=h/2+Math.sin(x/(24+k*15)+(rm?0:t/(240-k*40)))*amp*Math.sin(Math.PI*x/w)*(1-k*.25);x?g.lineTo(x,y):g.moveTo(x,y)}g.stroke()}
+    if(tx&&!rm&&t-last>450){rings.push(t);last=t}
+    for(let i=rings.length-1;i>=0;i--){const a=(t-rings[i])/1500;if(a>1){rings.splice(i,1);continue}
+      g.globalAlpha=(1-a)*.65;g.strokeStyle=gold;g.lineWidth=2;g.beginPath();g.ellipse(w/2,h/2,Math.max(1,a*w*.5),Math.max(1,a*h*.5),0,0,7);g.stroke()}
+    g.globalAlpha=1})(0)}
+setInterval(()=>{const s=ctx&&ctx.state!=="running"?"Audio paused. Tap the screen":tx?"Transmitting"+(q.length?" · "+q.length+" queued":"…"):performance.now()-lastRx<2500?"Heard "+lastKind:"Listening";
+  $("#st").textContent=s;$("#dot").classList.toggle("tx",tx)},250);
+
+/* ---------- protocol ---------- */
+function handle(s){const m=/^([BJADMSLKT])(\d{4})([0-9a-f]{4})([\s\S]*)$/.exec(s);if(!m)return;
+  const [,t,r,from,body]=m;
+  if(t==="T"&&from===me.id&&testing){testing=0;lastRx=performance.now();lastKind=KIND.T;toast("Your speaker and mic work. You heard yourself.");return}
+  if(from===me.id||t==="T")return;
+  lastRx=performance.now();lastKind=KIND[t];
+  if(t==="B"){const p=body.split("|");rooms.set(r,{title:p[0]||"Room",owner:p[1]||"?",admin:from,seen:Date.now()});if(document.body.dataset.s==="join")drawList();return}
+  if(t==="J"){if(!room||!room.admin||r!==room.id||banned.has(from))return;const name=body.split("|")[0]||"Guest";
+    if(members.has(from)){send("A",room.id,from);return}
+    if(declined.has(from)){send("D",room.id,from);return}
+    if(!pend.has(from)){pend.set(from,name);drawPanel();toast(name+" wants to join")}return}
+  if(t==="A"){if(joining&&joining.id===r&&body===me.id){const j=joining;joining=null;enter(r,j.title,false,from)}return}
+  if(t==="D"){if(joining&&joining.id===r&&body===me.id){joining=null;clearInterval(retry);toast("The admin declined your request");drawList()}return}
+  if(!room||r!==room.id)return;
+  if(t==="K"&&from===room.adminId){banned.add(body);if(body===me.id){toast("You were removed from the room");leave(true)}return}
+  if(banned.has(from))return;
+  if(t==="M"){if(room.admin&&!members.has(from))return;const i=body.indexOf("|");if(i<0)return;addMsg(body.slice(0,i)||"?",body.slice(i+1),false)}
+  else if(t==="S"&&from===room.adminId)addSys(body);
+  else if(t==="L"){if(from===room.adminId){toast("The admin closed the room");leave(true)}
+    else if(room.admin&&members.has(from)){const nm=members.get(from);members.delete(from);addSys(nm+" left");send("S",room.id,nm+" left");drawPanel()}}}
+
+/* ---------- rooms ---------- */
+function startBeacon(){clearTimeout(beacon);const f=()=>{if(!room||!room.admin)return;send("B",room.id,room.title+"|"+me.name);beacon=setTimeout(f,9000+Math.random()*3000)};f()}
+function createRoom(){if(room)return;let id,n=0;do{id=String(Math.floor(Math.random()*4000)).padStart(4,"0")}while(rooms.has(id)&&n++<50);
+  members.clear();pend.clear();banned.clear();declined.clear();showMem=false;enter(id,clean($("#rt").value,20)||me.name+"'s room",true,me.id);startBeacon()}
+function enter(id,title,admin,adminId){room={id,title,admin,adminId};clearInterval(retry);
+  $("#rtitle").textContent=title;$("#rfreq").textContent=fmt(+id);$("#mem").style.display=admin?"":"none";$("#msgs").textContent="";
+  addSys(admin?"Room open at "+fmt(+id)+". People nearby can find it and ask to join.":"You joined "+title);drawPanel();show("room")}
+function leave(silent){if(!room)return;for(let i=q.length-1;i>=0;i--)if("BM".includes(q[i].p[0]))q.splice(i,1);   // drop stale beacons/messages of this room
+  if(!silent)send("L",room.id,room.admin?"":me.name);
+  clearTimeout(beacon);room=null;members.clear();pend.clear();show("menu")}
+function requestJoin(id,title){if(joining)return toast("Already waiting for a reply");joining={id,title};let n=0;
+  const go=()=>{if(!joining)return clearInterval(retry);if(n++>=8){joining=null;clearInterval(retry);toast("No reply. Move closer and try again");drawList();return}send("J",id,me.name)};
+  go();retry=setInterval(go,12000);drawList()}
+function drawList(force){const l=$("#list"),w=$("#wait"),now=Date.now();
+  for(const [id,r] of rooms)if(now-r.seen>35000)rooms.delete(id);
+  const sig=JSON.stringify([[...rooms].map(([i,r])=>[i,r.title,r.owner]),joining&&joining.id]);if(!force&&sig===lastSig)return;lastSig=sig;   // only rebuild on change so taps are never lost
+  l.textContent="";w.textContent="";
+  if(joining)w.append(card("Waiting for the admin of "+fmt(+joining.id)+"…",[btn("Cancel","",()=>{joining=null;clearInterval(retry);drawList()})]));
+  if(!rooms.size)l.append(el("p","mu","Listening for rooms… they announce themselves every ~10 seconds. You can also type a frequency below."));
+  for(const [id,r] of rooms){const c=el("div","card"),a=el("div","grow"),t=el("div","",r.title),o=el("div","mu","by "+r.owner);a.append(t,o);
+    const b=btn("Join","pri",()=>requestJoin(id,r.title));b.disabled=!!joining;c.append(a,el("div","freq",fmt(+id)),b);l.append(c)}}
+setInterval(()=>{if(document.body.dataset.s==="join")drawList()},4000);
+function drawPanel(){const p=$("#pend");p.textContent="";if(room&&room.admin){
+  for(const [id,name] of pend)p.append(card(name+" wants to join",[btn("Accept","pri",()=>{pend.delete(id);members.set(id,name);send("A",room.id,id);send("S",room.id,name+" joined");addSys(name+" joined");drawPanel()}),
+    btn("Decline","",()=>{pend.delete(id);declined.add(id);send("D",room.id,id);drawPanel()})]));
+  if(showMem){if(!members.size)p.append(el("p","mu","No members yet."));
+    for(const [id,name] of members)p.append(card(name,[btn("Kick","dng",()=>{members.delete(id);banned.add(id);send("K",room.id,id);send("S",room.id,name+" was removed");addSys(name+" was removed");drawPanel()})]))}
+  $("#mem").textContent="Members ("+members.size+")"+(pend.size?" •":"")}
+  p.style.display=p.children.length?"flex":"none"}
+function addMsg(name,text,mine){const d=el("div","m"+(mine?" me":""));if(!mine)d.append(el("b","",name));const tt=el("span","",text);tt.dir="auto";d.append(tt);
+  const i=el("i","",(mine?" sending…":" "+tm()));d.append(i);const m=$("#msgs");m.append(d);m.scrollTop=m.scrollHeight;return i}
+const tm=()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+function addSys(t){const m=$("#msgs");m.append(el("div","sys",t));m.scrollTop=m.scrollHeight}
+
+/* ---------- wiring ---------- */
+function setName(n){n=clean(n,12);if(!n){$("#nm").value=me.name;return false}me.name=n;$("#nm").value=n;try{localStorage.setItem("oak.name",n)}catch(e){}return true}
+try{$("#uname").value=localStorage.getItem("oak.name")||""}catch(e){}
+async function go(){if($("#go").disabled)return;if(!setName($("#uname").value))return toast("Choose a name first");const b=$("#go");b.disabled=true;b.textContent="Starting…";
+  try{await boot();show("menu")}catch(e){b.disabled=false;b.textContent="Continue";
+    toast(e&&e.name==="NotAllowedError"?"Microphone blocked. Allow it in your browser's site settings, then try again":"Could not start audio: "+(e&&e.message||e))}}
+$("#go").onclick=go;$("#uname").onkeydown=e=>{if(e.key==="Enter")go()};
+$("#nm").onchange=e=>setName(e.target.value);
+$("#mj").onclick=()=>show("join");$("#mc").onclick=()=>{$("#rt").value="";show("create")};
+document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>{joining=null;clearInterval(retry);show("menu")});
+$("#clr").onclick=()=>{try{localStorage.removeItem("oak.name")}catch(e){}toast("Name forgotten. Nothing else is stored.")};
+$("#tst").onclick=()=>{const k=testing=Date.now();send("T","0000");setTimeout(()=>{if(testing===k){testing=0;toast("Did not hear the test. Raise the volume, remove the case, and try again.")}},15000);toast("Playing a test sound…")};
+$("#cr").onclick=createRoom;$("#rt").onkeydown=e=>{if(e.key==="Enter")createRoom()};
+$("#jb").onclick=()=>{const v=parseFloat($("#jf").value.replace(/[\u0660-\u0669]/g,d=>d.charCodeAt(0)-1632).replace(/[\u06F0-\u06F9]/g,d=>d.charCodeAt(0)-1776).replace(/[\u066B\u060C,]/g,"."));  // accepts Arabic digits and separators
+  const id=Math.round((v-15)*1000);
+  if(!(id>=0&&id<4000))return toast("Frequencies run from 15.000 to 18.999 kHz");const k=String(id).padStart(4,"0"),r=rooms.get(k);requestJoin(k,r?r.title:"Room "+fmt(id))};
+$("#mem").onclick=()=>{showMem=!showMem;drawPanel()};
+let arm=0,armT=0;$("#lv").onclick=()=>{if(!room)return;const lv=$("#lv"),close=room.admin;
+  if(arm){arm=0;lv.textContent="Leave";leave(false);return}
+  arm=1;lv.textContent=close?"Tap again to close":"Tap again to leave";clearTimeout(armT);armT=setTimeout(()=>{arm=0;lv.textContent="Leave"},3000)};
+const txt=$("#txt");txt.oninput=()=>{const n=bytes(txt.value);$("#cnt").textContent=n+" / "+MAXB+" bytes"+(n>MAXB?" · too long":"");$("#cnt").style.color=n>MAXB?"var(--bad)":""};
+function sendMsg(){const t=txt.value.trim();if(!t||!room)return;if(bytes(t)>MAXB)return toast("Too long. Emoji count as about 4 bytes each.");
+  const st=addMsg(me.name,t,true);send("M",room.id,me.name+"|"+t,()=>{st.textContent=" "+tm()+" · sent"},()=>{st.textContent=" not sent"});txt.value="";txt.oninput()}
+$("#snd").onclick=sendMsg;txt.onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing)sendMsg()};
+if(!TEST&&(!window.isSecureContext||!navigator.mediaDevices))toast("Open this page over HTTPS to use the microphone");
+if(!TEST)waves();
+if(TEST)window.__oak={handle,get room(){return room},members,pend,rooms,me,go,setName,show};
+</script></body></html>
